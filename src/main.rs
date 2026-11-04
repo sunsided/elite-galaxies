@@ -5,7 +5,8 @@ use elite::{GALAXIES, Seed, StarSystem, galaxy_from_seed};
 const USAGE: &str = "\
 Usage:
   elite list [GALAXY]            List all 256 systems of GALAXY (1-8, default 1)
-  elite show NAME [GALAXY]       Show one system's data sheet
+  elite describe [GALAXY]        Print every system's planet description
+  elite show NAME [GALAXY]       Show one system's data sheet and description
   elite find NAME                Search all eight galaxies for NAME
   elite seed S0 S1 S2 [NAME]     Use any 48-bit seed (hex words), e.g. 5A4A 0248 B753
 ";
@@ -27,6 +28,8 @@ fn run(args: &[&str]) -> Result<(), String> {
     match args {
         [] | ["list"] => list(&galaxy_from_seed(Seed::galaxy(0))),
         ["list", g] => list(&galaxy_from_seed(Seed::galaxy(parse_galaxy(g)?))),
+        ["describe"] => describe(&galaxy_from_seed(Seed::galaxy(0))),
+        ["describe", g] => describe(&galaxy_from_seed(Seed::galaxy(parse_galaxy(g)?))),
         ["show", name] => show(&galaxy_from_seed(Seed::galaxy(0)), name),
         ["show", name, g] => show(&galaxy_from_seed(Seed::galaxy(parse_galaxy(g)?)), name),
         ["find", name] => find_everywhere(name),
@@ -78,6 +81,13 @@ fn list(systems: &[StarSystem]) -> Result<(), String> {
             s.population / 10,
             s.population % 10,
         );
+    }
+    Ok(())
+}
+
+fn describe(systems: &[StarSystem]) -> Result<(), String> {
+    for s in systems {
+        println!("{:<9} {}", s.name, s.description());
     }
     Ok(())
 }
