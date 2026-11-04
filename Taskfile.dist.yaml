@@ -1,0 +1,101 @@
+version: '3'
+
+vars:
+  SNAPSHOT_DIR: '{{ .SNAPSHOT_DIR | default "target/snapshots" }}'
+
+tasks:
+  default:
+    cmds:
+      - task --list --sort=none
+    silent: true
+
+  run:
+    desc: Run the pixel galaxy explorer (release build; it shades every pixel on the CPU)
+    preconditions: &cargo
+      - sh: command -v cargo
+        msg: "cargo not found - install Rust from https://rustup.rs/"
+    cmds:
+      - cargo run --release -p elite-explorer {{.CLI_ARGS}}
+
+  cli:
+    desc: 'Run the elite CLI, e.g. task cli -- show Lave'
+    preconditions: *cargo
+    cmds:
+      - cargo run -q -p elite -- {{.CLI_ARGS}}
+
+  build:
+    desc: Build the whole workspace, including tests and examples
+    preconditions: *cargo
+    cmds:
+      - cargo build --workspace --all-targets
+
+  build:release:
+    desc: Build optimized binaries
+    preconditions: *cargo
+    cmds:
+      - cargo build --workspace --release
+
+  test:
+    desc: 'Run all tests (pass filters after --, e.g. task test -- planet)'
+    preconditions: *cargo
+    cmds:
+      - cargo test --workspace {{.CLI_ARGS}}
+
+  snapshots:
+    desc: 'Render explorer PNG snapshots to {{.SNAPSHOT_DIR}} (override with SNAPSHOT_DIR=...)'
+    preconditions: *cargo
+    cmds:
+      - mkdir -p "{{.SNAPSHOT_DIR}}"
+      - SNAPSHOT_DIR="$(realpath "{{.SNAPSHOT_DIR}}")" cargo test -q -p elite-explorer -- --ignored snapshots
+      - echo "Snapshots written to {{.SNAPSHOT_DIR}}"
+
+  fmt:
+    desc: Format all code
+    aliases: [format]
+    preconditions: *cargo
+    cmds:
+      - cargo fmt --all
+
+  lint:
+    desc: Run clippy with warnings as errors
+    preconditions: *cargo
+    cmds:
+      - cargo clippy --workspace --all-targets -- -D warnings
+
+  lint:fix:
+    desc: Apply clippy's automatic fixes
+    aliases: [fix]
+    preconditions: *cargo
+    cmds:
+      - cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
+
+  check:
+    desc: Static checks - formatting and lints
+    cmds:
+      - cargo fmt --all --check
+      - task: lint
+
+  ci:
+    desc: Everything CI would run - static checks, then tests
+    cmds:
+      - task: check
+      - task: test
+
+  docs:
+    desc: Build API docs
+    preconditions: *cargo
+    cmds:
+      - cargo doc --workspace --no-deps
+
+  docs:open:
+    desc: Build API docs and open them in a browser
+    preconditions: *cargo
+    cmds:
+      - cargo doc --workspace --no-deps --open
+
+  clean:
+    desc: Remove build output
+    status:
+      - test ! -d target
+    cmds:
+      - cargo clean
