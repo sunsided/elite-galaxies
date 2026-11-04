@@ -149,7 +149,8 @@ impl SoupRng {
 }
 
 pub(crate) fn describe(system: &StarSystem) -> String {
-    let mut rng = SoupRng(system.soup_seed);
+    let s = system.seed;
+    let mut rng = SoupRng([s.s1_lo(), s.s1_hi(), s.s2_lo(), s.s2_hi()]);
     let mut out = String::new();
     expand("\u{8F} is \u{97}.", system, &mut rng, &mut out);
     out

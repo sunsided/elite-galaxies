@@ -61,8 +61,8 @@ pub struct StarSystem {
     /// Average radius in km.
     pub radius: u16,
     pub species: String,
-    /// The four seed bytes used to seed the "goat soup" description generator.
-    pub(crate) soup_seed: [u8; 4],
+    /// The seed this system was generated from (before the four twists).
+    pub seed: Seed,
 }
 
 impl StarSystem {
@@ -102,7 +102,7 @@ impl StarSystem {
             productivity,
             radius,
             species: species(seed),
-            soup_seed: [seed.s1_lo(), seed.s1_hi(), seed.s2_lo(), seed.s2_hi()],
+            seed,
         }
     }
 
