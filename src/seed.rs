@@ -105,4 +105,43 @@ mod tests {
         // 0x5A4A -> 0xB494, 0x0248 -> 0x0490, 0xB753 -> 0x6FA6
         assert_eq!(Seed::galaxy(1), Seed::new(0xB494, 0x0490, 0x6FA6));
     }
+
+    #[test]
+    fn twist_shifts_words_and_appends_wrapping_sum() {
+        let mut s = Seed::GALAXY_ONE;
+        s.twist();
+        // 0x5A4A + 0x0248 + 0xB753 = 0x113E5, truncated to 16 bits.
+        assert_eq!(s, Seed::new(0x0248, 0xB753, 0x13E5));
+    }
+
+    #[test]
+    fn rotation_keeps_bytes_independent() {
+        // The top bit of each byte wraps into that byte's bit 0, never into
+        // the neighbouring byte.
+        assert_eq!(rotate_bytes_left(0x8001), 0x0102);
+        assert_eq!(rotate_bytes_left(0x0080), 0x0001);
+        assert_eq!(rotate_bytes_left(0xFFFF), 0xFFFF);
+    }
+
+    #[test]
+    fn galaxy_number_wraps_modulo_eight() {
+        for n in 0..8 {
+            assert_eq!(Seed::galaxy(n + 8), Seed::galaxy(n));
+            assert_eq!(Seed::galaxy(n + 16), Seed::galaxy(n));
+        }
+    }
+
+    #[test]
+    fn all_eight_galaxy_seeds_are_distinct() {
+        let seeds: std::collections::HashSet<_> = (0..8).map(Seed::galaxy).collect();
+        assert_eq!(seeds.len(), 8);
+    }
+
+    #[test]
+    fn byte_accessors_split_words_little_endian() {
+        let s = Seed::new(0x5A4A, 0x0248, 0xB753);
+        assert_eq!((s.s0_lo(), s.s0_hi()), (0x4A, 0x5A));
+        assert_eq!((s.s1_lo(), s.s1_hi()), (0x48, 0x02));
+        assert_eq!((s.s2_lo(), s.s2_hi()), (0x53, 0xB7));
+    }
 }

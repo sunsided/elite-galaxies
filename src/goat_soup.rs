@@ -205,3 +205,147 @@ fn random_word(rng: &mut SoupRng, out: &mut String) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::seed::Seed;
+
+    /// Literal port of `gen_rnd_number` from txtelite.c, using `int` arithmetic.
+    fn reference_rng(s: &mut [i32; 4]) -> u8 {
+        let mut x = (s[0] * 2) & 0xFF;
+        let mut a = x + s[2];
+        if s[0] > 127 {
+            a += 1;
+        }
+        s[0] = a & 0xFF;
+        s[2] = x;
+        a /= 256;
+        x = s[1];
+        a = (a + x + s[3]) & 0xFF;
+        s[1] = a;
+        s[3] = x;
+        a as u8
+    }
+
+    fn some_system() -> StarSystem {
+        StarSystem::from_seed(0, Seed::GALAXY_ONE)
+    }
+
+    #[test]
+    fn rng_matches_txtelite_reference() {
+        let starts = [
+            [0u8; 4],
+            [0xFF; 4],
+            [0x48, 0x02, 0x53, 0xB7],
+            [0x80, 0x7F, 0x01, 0xFE],
+        ];
+        for start in starts {
+            let mut ours = SoupRng(start);
+            let mut theirs = start.map(i32::from);
+            for step in 0..1000 {
+                assert_eq!(
+                    ours.next(),
+                    reference_rng(&mut theirs),
+                    "start {start:?}, step {step}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn adjective_drops_trailing_e_or_i() {
+        assert_eq!(adjective("Lave"), "Lavian");
+        assert_eq!(adjective("Rabedi"), "Rabedian");
+        assert_eq!(adjective("Diso"), "Disoian");
+        assert_eq!(adjective("Leesti"), "Leestian");
+        // A one-letter name keeps its letter, as in txtelite.c.
+        assert_eq!(adjective("E"), "Eian");
+    }
+
+    #[test]
+    fn plain_text_passes_through_without_using_rng() {
+        let mut rng = SoupRng([1, 2, 3, 4]);
+        let mut out = String::new();
+        expand("Hello.", &some_system(), &mut rng, &mut out);
+        assert_eq!(out, "Hello.");
+        assert_eq!(rng.0, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn name_codes_expand_to_planet_name_and_adjective() {
+        let sys = some_system();
+        let mut out = String::new();
+        expand("\u{B0}/\u{B1}", &sys, &mut SoupRng([0; 4]), &mut out);
+        assert_eq!(out, format!("{0}/{0}ian", sys.name));
+    }
+
+    #[test]
+    fn option_thresholds_split_the_byte_into_fifths() {
+        // With a = b = c = 0 the first RNG output is exactly d.
+        let cases = [
+            (0x00, "fabled"),
+            (0x32, "fabled"),
+            (0x33, "notable"),
+            (0x65, "notable"),
+            (0x66, "well known"),
+            (0x98, "well known"),
+            (0x99, "famous"),
+            (0xCB, "famous"),
+            (0xCC, "noted"),
+            (0xFF, "noted"),
+        ];
+        for (d, expected) in cases {
+            assert_eq!(SoupRng([0, 0, 0, d]).next(), d);
+            let mut out = String::new();
+            expand(
+                "\u{81}",
+                &some_system(),
+                &mut SoupRng([0, 0, 0, d]),
+                &mut out,
+            );
+            assert_eq!(out, expected, "rng byte {d:#04X}");
+        }
+    }
+
+    #[test]
+    fn random_word_is_at_most_eight_letters_in_sentence_case() {
+        for a in 0..=255u8 {
+            let mut out = String::new();
+            random_word(&mut SoupRng([a, a.wrapping_mul(7), 3, 5]), &mut out);
+            assert!(out.len() <= 8, "{out:?}");
+            assert!(out.chars().all(|c| c.is_ascii_alphabetic()), "{out:?}");
+            let mut chars = out.chars();
+            if let Some(first) = chars.next() {
+                assert!(first.is_ascii_uppercase(), "{out:?}");
+                assert!(chars.all(|c| c.is_ascii_lowercase()), "{out:?}");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "bad code")]
+    fn unknown_code_panics() {
+        expand(
+            "\u{A5}",
+            &some_system(),
+            &mut SoupRng([0; 4]),
+            &mut String::new(),
+        );
+    }
+
+    #[test]
+    fn every_description_is_one_finished_sentence() {
+        for g in 0..8 {
+            for sys in crate::galaxy(g) {
+                let d = sys.description();
+                assert!(d.ends_with('.'), "{}: {d}", sys.name);
+                assert!(
+                    d.starts_with(['T', sys.name.chars().next().unwrap()]),
+                    "{d}"
+                );
+                assert!(d.is_ascii(), "{d}");
+            }
+        }
+    }
+}

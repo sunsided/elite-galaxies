@@ -238,3 +238,192 @@ impl fmt::Display for StarSystem {
         write!(f, "\n{}", self.description())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a seed from its six bytes, named as in the 6502 source.
+    fn seed(s0_hi: u8, s0_lo: u8, s1_hi: u8, s1_lo: u8, s2_hi: u8, s2_lo: u8) -> Seed {
+        Seed::new(
+            u16::from_be_bytes([s0_hi, s0_lo]),
+            u16::from_be_bytes([s1_hi, s1_lo]),
+            u16::from_be_bytes([s2_hi, s2_lo]),
+        )
+    }
+
+    /// Government sits in bits 3-5 of `s1_lo`.
+    fn gov(g: u8) -> u8 {
+        g << 3
+    }
+
+    #[test]
+    fn position_comes_from_high_bytes() {
+        let s = StarSystem::from_seed(0, seed(173, 0, 20, 0, 0, 0));
+        assert_eq!((s.x, s.y), (20, 173));
+    }
+
+    #[test]
+    fn anarchy_and_feudal_worlds_are_never_rich() {
+        for g in 0..=1 {
+            for e in 0..8 {
+                let s = StarSystem::from_seed(0, seed(e, 0, 0, gov(g), 0, 0));
+                assert_eq!(s.economy, e | 2, "government {g}, economy bits {e}");
+            }
+        }
+        // Other governments keep the raw economy bits.
+        let s = StarSystem::from_seed(0, seed(0, 0, 0, gov(2), 0, 0));
+        assert_eq!(s.economy, 0);
+    }
+
+    #[test]
+    fn economy_ignores_bits_above_two() {
+        let s = StarSystem::from_seed(0, seed(0b1111_1101, 0, 0, gov(7), 0, 0));
+        assert_eq!(s.economy, 5);
+    }
+
+    #[test]
+    fn tech_level_includes_carry_from_government_shift() {
+        // Dictatorship (3): LSR gives 1 with carry set, so ADC adds 2 in total.
+        let s = StarSystem::from_seed(0, seed(0, 0, 0, gov(3), 0, 0));
+        // (s1_hi & 3) = 0, economy 0 ^ 7 = 7, 3 >> 1 = 1, carry 1.
+        assert_eq!(s.tech_level, 7 + 1 + 1);
+
+        // Communist (4): LSR gives 2, no carry.
+        let s = StarSystem::from_seed(0, seed(0, 0, 0, gov(4), 0, 0));
+        assert_eq!(s.tech_level, 7 + 2);
+    }
+
+    #[test]
+    fn tech_level_adds_low_bits_of_s1_hi() {
+        let s = StarSystem::from_seed(0, seed(0, 0, 0b1111_1111, gov(7), 0, 0));
+        // 3 + (0 ^ 7) + (7 >> 1) + 1
+        assert_eq!(s.tech_level, 14);
+        assert_eq!(s.displayed_tech_level(), 15);
+    }
+
+    #[test]
+    fn population_productivity_and_radius_formulas() {
+        let s = StarSystem::from_seed(0, seed(0, 0, 0, gov(3), 0, 0));
+        // 4 * tech 9 + economy 0 + government 3 + 1
+        assert_eq!(s.population, 4 * 9 + 3 + 1);
+        assert_eq!(s.productivity, (7 + 3) * (3 + 4) * 40 * 8);
+        assert_eq!(s.radius, 256 * 11);
+
+        // Radius uses only the low nibble of s2_hi, plus x.
+        let s = StarSystem::from_seed(0, seed(0, 0, 200, 0, 0xFF, 0));
+        assert_eq!(s.radius, 256 * (15 + 11) + 200);
+    }
+
+    #[test]
+    fn humans_when_bit_seven_of_s2_lo_is_clear() {
+        let s = StarSystem::from_seed(0, seed(0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F));
+        assert_eq!(s.species, "Human Colonials");
+    }
+
+    #[test]
+    fn alien_with_all_three_adjectives() {
+        // s2_hi = 001 001 10: size 1 (Fierce), colour 1 (Red), low bits 2.
+        // look = (s0_hi ^ s1_hi) & 7 = 3 (Bony); kind = (2 + 3) & 7 = 5.
+        let s = StarSystem::from_seed(0, seed(0, 0, 3, 0, 0b0010_0110, 0x80));
+        assert_eq!(s.species, "Fierce Red Bony Humanoids");
+    }
+
+    #[test]
+    fn alien_adjectives_are_skipped_when_out_of_range() {
+        // size 4, colour 6 and look 6 have no words; kind = (0 + 6) & 7 = 6.
+        // txtelite.c masks the size with AND 3 and would print "Large" here;
+        // the 6502 uses AND 7 and prints nothing.
+        let s = StarSystem::from_seed(0, seed(6, 0, 0, 0, 0b1101_0000, 0x80));
+        assert_eq!(s.species, "Felines");
+    }
+
+    #[test]
+    fn species_kind_wraps_within_three_bits() {
+        // look 7 (no word) + low bits 3 = 10 -> 2 (Lizards).
+        let s = StarSystem::from_seed(0, seed(7, 0, 0, 0, 0b1111_1111, 0x80));
+        assert_eq!(s.species, "Lizards");
+    }
+
+    #[test]
+    fn generate_advances_seed_by_exactly_four_twists() {
+        for start in [Seed::GALAXY_ONE, Seed::galaxy(3), Seed::new(1, 2, 3)] {
+            let mut advanced = start;
+            StarSystem::generate(0, &mut advanced);
+
+            let mut expected = start;
+            for _ in 0..4 {
+                expected.twist();
+            }
+            assert_eq!(advanced, expected);
+        }
+    }
+
+    #[test]
+    fn short_and_long_names() {
+        // Bit 6 of s0_lo selects a four-pair name. Tibedied's seed has it set
+        // (0x4A); clearing it drops the fourth pair "ED".
+        let s = Seed::GALAXY_ONE;
+        assert_eq!(s.s0_lo() & 0x40, 0x40);
+        assert_eq!(name_from_seed(s), "Tibedied");
+        assert_eq!(
+            name_from_seed(Seed::new(s.s0 & !0x40, s.s1, s.s2)),
+            "Tibedi"
+        );
+    }
+
+    #[test]
+    fn dots_in_pairs_print_nothing() {
+        // s2_hi & 31 == 0 selects the ".." pair for every syllable.
+        let s = Seed::new(0, 0, 0);
+        assert_eq!(name_from_seed(s), "");
+    }
+
+    #[test]
+    fn capitalize_lowercases_the_tail() {
+        assert_eq!(capitalize("LAVE"), "Lave");
+        assert_eq!(capitalize("X"), "X");
+        assert_eq!(capitalize(""), "");
+    }
+
+    #[test]
+    fn distance_halves_y_and_uses_integer_sqrt() {
+        let a = StarSystem::from_seed(0, seed(0, 0, 0, 0, 0, 0));
+        let b = StarSystem::from_seed(1, seed(8, 0, 3, 0, 0, 0));
+        // dx = 3, dy = 8 / 2 = 4 -> 4 * isqrt(25) / 10 = 2.0 ly
+        assert_eq!(a.distance_to(&b), 2.0);
+        assert_eq!(b.distance_to(&a), 2.0);
+        assert_eq!(a.distance_to(&a), 0.0);
+
+        // isqrt truncates: dx = 1, dy = 1 -> 4 * isqrt(2) = 4 -> 0.4 ly
+        let c = StarSystem::from_seed(2, seed(2, 0, 1, 0, 0, 0));
+        assert_eq!(a.distance_to(&c), 0.4);
+    }
+
+    #[test]
+    fn names_tables_match_their_indices() {
+        assert_eq!(ECONOMIES[5], "Rich Agricultural");
+        assert_eq!(GOVERNMENTS[3], "Dictatorship");
+        assert_eq!(&PAIRS[24..26], b"..");
+        assert_eq!(&NAME_PAIRS[..4], b"..LE");
+    }
+
+    #[test]
+    fn display_shows_the_game_data_sheet() {
+        let lave = crate::galaxy(0).swap_remove(7);
+        let text = lave.to_string();
+        for line in [
+            "System:       Lave (#7)",
+            "Position:     (20, 173)",
+            "Economy:      Rich Agricultural",
+            "Government:   Dictatorship",
+            "Tech Level:   5",
+            "Population:   2.5 Billion (Human Colonials)",
+            "Productivity: 7000 M CR",
+            "Radius:       4116 km",
+        ] {
+            assert!(text.contains(line), "missing {line:?} in\n{text}");
+        }
+        assert!(text.ends_with("the Lavian tree grub."));
+    }
+}
