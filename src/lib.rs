@@ -2,6 +2,26 @@
 //! David Braben & Ian Bell): eight galaxies of 256 star systems each, all
 //! unfolded from a single 48-bit seed.
 //!
+//! A [`Seed`] holds three 16-bit words. Each [`StarSystem`] is read from the
+//! bits of the current seed, which is then twisted four times to reach the
+//! next system; rotating every seed byte left by one bit reaches the next
+//! galaxy, and eight rotations lead back to the first.
+//!
+//! ```
+//! let galaxy = elite::galaxy(0);
+//! let lave = &galaxy[7];
+//! assert_eq!(lave.name, "Lave");
+//! assert_eq!(lave.economy_name(), "Rich Agricultural");
+//! assert_eq!(
+//!     lave.description(),
+//!     "Lave is most famous for its vast rain forests and the Lavian tree grub."
+//! );
+//! ```
+//!
+//! Where Ian Bell's `txtelite.c` and the BBC Micro's 6502 code disagree
+//! (the size adjective of alien species, the capital letter of some made-up
+//! words), this crate follows the 6502.
+//!
 //! References: the BBC Micro source as annotated by Mark Moxon
 //! (<https://elite.bbcelite.com>) and Ian Bell's `txtelite.c`.
 
@@ -22,6 +42,14 @@ pub const GALAXIES: usize = 8;
 ///
 /// Any 48-bit seed produces a valid galaxy — the game simply only ever
 /// visits the eight seeds reachable from [`Seed::GALAXY_ONE`].
+///
+/// ```
+/// use elite::{Seed, galaxy_from_seed};
+///
+/// let systems = galaxy_from_seed(Seed::new(0x1234, 0xABCD, 0x9F01));
+/// assert_eq!(systems.len(), elite::SYSTEMS_PER_GALAXY);
+/// assert_eq!(galaxy_from_seed(Seed::GALAXY_ONE), elite::galaxy(0));
+/// ```
 pub fn galaxy_from_seed(mut seed: Seed) -> Vec<StarSystem> {
     (0..SYSTEMS_PER_GALAXY)
         .map(|i| StarSystem::generate(i as u8, &mut seed))
@@ -29,20 +57,28 @@ pub fn galaxy_from_seed(mut seed: Seed) -> Vec<StarSystem> {
 }
 
 /// All 256 systems of galaxy `n` (0-based; wraps modulo 8 like the game).
+///
+/// ```
+/// assert_eq!(elite::galaxy(0)[0].name, "Tibedied");
+/// assert_eq!(elite::galaxy(8), elite::galaxy(0));
+/// ```
 pub fn galaxy(n: usize) -> Vec<StarSystem> {
     galaxy_from_seed(Seed::galaxy(n))
 }
 
+/// Tests against known game data across whole galaxies.
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Finds a system by exact name, panicking with the name if it is missing.
     fn find<'a>(g: &'a [StarSystem], name: &str) -> &'a StarSystem {
         g.iter()
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("{name} not found"))
     }
 
+    /// Galaxy 1 opens with Tibedied, Qube, Leleer, …, Lave, as in the game.
     #[test]
     fn first_systems_of_galaxy_one() {
         let g = galaxy(0);
@@ -55,6 +91,7 @@ mod tests {
         );
     }
 
+    /// Lave's whole data sheet and description match the game.
     #[test]
     fn lave_matches_the_game() {
         let g = galaxy(0);
@@ -74,6 +111,7 @@ mod tests {
         );
     }
 
+    /// The famous systems around Lave are all in galaxy 1.
     #[test]
     fn lave_neighbours_exist() {
         let g = galaxy(0);
@@ -84,6 +122,7 @@ mod tests {
         }
     }
 
+    /// Descriptions of Zaonce, Leesti and Diso match the game, and Diso's species.
     #[test]
     fn known_descriptions() {
         let g = galaxy(0);
@@ -103,6 +142,7 @@ mod tests {
         assert_eq!(find(&g, "Diso").species, "Black Furry Felines");
     }
 
+    /// Species use the 6502's AND 7 size mask where txtelite.c uses AND 3.
     #[test]
     fn species_follow_the_6502_not_txtelite() {
         // txtelite.c masks the size adjective with AND 3 and adds
@@ -113,6 +153,7 @@ mod tests {
         assert_eq!(find(&g, "Eredve").species, "Insects");
     }
 
+    /// A made-up word starting with the blank syllable still gets its capital letter.
     #[test]
     fn random_word_capitalised_after_blank_syllable() {
         // MT18 sets Sentence Case, so the first *printed* letter is upper
@@ -124,6 +165,7 @@ mod tests {
         );
     }
 
+    /// Every system in every galaxy has a well-formed name and in-range stats.
     #[test]
     fn every_galaxy_has_256_well_formed_systems() {
         for n in 0..GALAXIES {
@@ -142,6 +184,7 @@ mod tests {
         }
     }
 
+    /// Jumping eight times returns to galaxy 1.
     #[test]
     fn galaxy_nine_is_galaxy_one() {
         assert_eq!(galaxy(8), galaxy(0));

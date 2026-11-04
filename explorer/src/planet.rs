@@ -7,51 +7,75 @@ use crate::fb::{Fb, Rgb, bayer, dither_levels, lerp, scale};
 use crate::noise::{fbm, hash3, rand3, value3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The dominant terrain type, which picks palette, sea level, clouds and atmosphere.
 pub enum Surface {
+    /// Mostly water with green islands ("oceans").
     Ocean,
+    /// Dense green continents ("rain forests", "tropical forests").
     Jungle,
+    /// Patchwork fields of crops ("plantations").
     Plantation,
+    /// Bare rock and snowy peaks ("mountains", "rock formations").
     Rocky,
+    /// Dark rock with glowing lava seas ("volcanoes").
     Volcanic,
+    /// Frozen seas and white land; never named by a description, picked from the stats.
     Ice,
+    /// Sand and dry basins under a dusty sky.
     Dusty,
+    /// A grey world covered by cities, with highways by day and lights by night.
     City,
+    /// Grey airless rock; used for moons.
     Barren,
 }
 
 #[derive(Clone, Debug)]
+/// Surface colours of one planet.
 pub struct Palette {
+    /// Colour of the deepest water (or lava).
     pub deep: Rgb,
+    /// Colour of water near the coast.
     pub shallow: Rgb,
     /// Lowland to peaks.
     pub land: [Rgb; 4],
 }
 
 #[derive(Clone, Debug)]
+/// A ring system around the planet's equator.
 pub struct Rings {
     /// Inner and outer edge, in planet radii.
     pub inner: f32,
+    /// Outer edge, in planet radii.
     pub outer: f32,
     /// Rotation of the ring ellipse on screen, in radians.
     pub tilt: f32,
+    /// Base colour of the ring material.
     pub color: Rgb,
 }
 
 #[derive(Clone, Debug)]
+/// A small moon on an inclined orbit, passing in front of and behind the planet.
 pub struct Moon {
     /// Orbit radius and moon radius, in planet radii.
     pub distance: f32,
+    /// Moon radius, in planet radii.
     pub size: f32,
     /// Radians per second.
     pub speed: f32,
+    /// Angle on the orbit at time zero, in radians.
     pub phase: f32,
+    /// Noise seed for the moon's craters.
     pub seed: u32,
 }
 
 #[derive(Clone, Debug)]
+/// Everything that decides how one planet is drawn, derived from its system.
 pub struct Look {
+    /// Noise seed, mixed from the system's 48-bit seed.
     pub seed: u32,
+    /// Terrain type.
     pub surface: Surface,
+    /// Surface colours.
     pub palette: Palette,
     /// Height below which the surface is water (or lava, or dry basins).
     pub sea_level: f32,
@@ -59,15 +83,23 @@ pub struct Look {
     pub ice_caps: f32,
     /// Cloud coverage, 0..1.
     pub clouds: f32,
+    /// Colour of the clouds (white, ash, dust or a sickly green).
     pub cloud_color: Rgb,
+    /// Colour of the atmospheric haze around the limb, or `None` for airless bodies.
     pub atmosphere: Option<Rgb>,
     /// Density of city lights on the night side, 0..1.
     pub lights: f32,
+    /// Lowlands drawn as fields in alternating crop colours.
     pub patchwork: bool,
+    /// Water areas glow as lava.
     pub lava: bool,
+    /// Flickering fires on land ("civil war").
     pub fires: bool,
+    /// Glowing fault lines ("earthquakes").
     pub quakes: bool,
+    /// Ring system, if any.
     pub rings: Option<Rings>,
+    /// Moon, if any.
     pub moon: Option<Moon>,
     /// Axial tilt on screen, radians.
     pub tilt: f32,
@@ -75,10 +107,13 @@ pub struct Look {
     pub spin: f32,
     /// Radius in pixels at normal zoom.
     pub size: f32,
+    /// Colour of the system's star.
     pub star: Rgb,
+    /// Whether the star throws flares ("solar activity").
     pub flares: bool,
 }
 
+/// Star colours from yellow and orange dwarfs to red, white and blue-white stars.
 const STAR_COLORS: [Rgb; 6] = [
     [255, 240, 180],
     [255, 226, 140],
@@ -88,6 +123,7 @@ const STAR_COLORS: [Rgb; 6] = [
     [172, 200, 255],
 ];
 
+/// Adjectives that shift a planet's colours into alien territory.
 const WEIRD: [&str; 5] = ["funny", "wierd", "unusual", "strange", "peculiar"];
 
 impl Look {
@@ -391,6 +427,7 @@ fn base_style(surface: Surface) -> (Palette, f32, f32, Rgb, Option<Rgb>) {
     }
 }
 
+/// Dot product of two 3D vectors.
 fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
@@ -432,6 +469,7 @@ pub fn draw(fb: &mut Fb, look: &Look, cx: f32, cy: f32, r: f32, t: f32, light: [
     }
 }
 
+/// Draws one shaded sphere (planet or moon) with its atmospheric halo.
 fn sphere(fb: &mut Fb, look: &Look, cx: f32, cy: f32, r: f32, t: f32, light: [f32; 3]) {
     let (st, ct) = look.tilt.sin_cos();
     let (sr, cr) = (t * look.spin).sin_cos();
@@ -475,6 +513,7 @@ fn sphere(fb: &mut Fb, look: &Look, cx: f32, cy: f32, r: f32, t: f32, light: [f3
     }
 }
 
+/// Hash of the lattice cell of `p` at grid frequency `k`, for per-cell features.
 fn cell(p: [f32; 3], k: f32, seed: u32) -> u32 {
     hash3(
         (p[0] * k).floor() as i32,
@@ -484,6 +523,7 @@ fn cell(p: [f32; 3], k: f32, seed: u32) -> u32 {
     )
 }
 
+/// Colour of the surface point `p` on the unit sphere, shaded by `lambert`, at pixel `(x, y)`.
 fn surface_color(look: &Look, p: [f32; 3], nz: f32, lambert: f32, t: f32, x: i32, y: i32) -> Rgb {
     let seed = look.seed;
     let pal = &look.palette;
@@ -605,7 +645,9 @@ fn surface_color(look: &Look, p: [f32; 3], nz: f32, lambert: f32, t: f32, x: i32
     out
 }
 
+/// Draws the half of the rings in front of (`front`) or behind the planet.
 fn draw_rings(fb: &mut Fb, seed: u32, rings: &Rings, cx: f32, cy: f32, r: f32, front: bool) {
+    /// Vertical squash of the ring ellipse: how flat we see the ring plane.
     const SQUASH: f32 = 0.28;
     let outer = rings.outer * r;
     let (s, c) = rings.tilt.sin_cos();
@@ -637,16 +679,19 @@ fn draw_rings(fb: &mut Fb, seed: u32, rings: &Rings, cx: f32, cy: f32, r: f32, f
     }
 }
 
+/// Tests for planet looks and the sphere renderer.
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The look of the system called `name` in galaxy `galaxy` (0-based).
     fn look(name: &str, galaxy: usize) -> Look {
         let g = elite::galaxy(galaxy);
         let s = g.iter().find(|s| s.name == name).unwrap();
         Look::for_system(s)
     }
 
+    /// Lave's rain forests make a jungle; Diso's plantations a patchwork with flares.
     #[test]
     fn descriptions_drive_the_surface() {
         // "vast rain forests and the Lavian tree grub"
@@ -657,6 +702,7 @@ mod tests {
         assert!(diso.patchwork && diso.flares);
     }
 
+    /// Every system's look has size, clouds and lights within range.
     #[test]
     fn every_system_gets_a_sane_look() {
         for g in 0..8 {
@@ -669,6 +715,7 @@ mod tests {
         }
     }
 
+    /// Every surface kind except moon rock occurs somewhere.
     #[test]
     fn every_surface_kind_occurs_in_the_eight_galaxies() {
         let mut seen = std::collections::HashSet::new();
@@ -680,6 +727,7 @@ mod tests {
         assert_eq!(seen.len(), 8, "{seen:?}"); // all but Barren (moons only)
     }
 
+    /// Drawing off-screen, tiny or huge planets does not panic.
     #[test]
     fn drawing_fully_offscreen_or_tiny_does_not_panic() {
         let mut fb = Fb::new();
@@ -694,6 +742,7 @@ mod tests {
         }
     }
 
+    /// The side facing the sun is brighter than the far side.
     #[test]
     fn planet_is_lit_on_the_sun_side() {
         let mut fb = Fb::new();
@@ -703,5 +752,89 @@ mod tests {
         let lit: u32 = (0..10).map(|i| lum(fb.get(140 + i, 85))).sum();
         let dark: u32 = (0..10).map(|i| lum(fb.get(180 + i, 115))).sum();
         assert!(lit > dark, "lit {lit} vs dark {dark}");
+    }
+
+    /// "pink oceans" tints the water, not the land.
+    #[test]
+    fn pink_oceans_tint_the_water() {
+        let azaqu = look("Azaqu", 0);
+        let plain = base_style(azaqu.surface).0;
+        assert_ne!(azaqu.palette.shallow, plain.shallow);
+        assert_eq!(azaqu.palette.land, plain.land);
+    }
+
+    /// Weird adjectives rotate the land colours' channels.
+    #[test]
+    fn weird_worlds_rotate_their_colours() {
+        let raoror = look("Raoror", 0); // "wierd volcanoes"
+        let plain = base_style(Surface::Volcanic).0.land[0];
+        assert_eq!(raoror.palette.land[0], [plain[1], plain[2], plain[0]]);
+    }
+
+    /// Volcanoes give lava, civil war fires, solar activity flares.
+    #[test]
+    fn description_flags() {
+        assert!(look("Raoror", 0).lava);
+        assert!(look("Riedquat", 0).fires);
+        assert!(look("Tibedied", 0).flares);
+        assert!(!look("Lave", 0).fires);
+    }
+
+    /// Moons are airless grey rock without extras.
+    #[test]
+    fn moon_look_is_barren() {
+        let m = Look::moon(7);
+        assert_eq!(m.surface, Surface::Barren);
+        assert!(m.atmosphere.is_none() && m.rings.is_none() && m.moon.is_none());
+        assert_eq!(m.clouds, 0.0);
+    }
+
+    /// Ringed planets are drawn smaller so the rings fit on screen.
+    #[test]
+    fn ringed_planets_shrink() {
+        for s in elite::galaxy(0) {
+            let l = Look::for_system(&s);
+            if l.rings.is_some() {
+                assert!(l.size <= 50.0 * 0.82 + 1e-3, "{}: {}", s.name, l.size);
+            }
+        }
+    }
+
+    /// The vector helpers do what they say.
+    #[test]
+    fn dot_and_cell() {
+        assert_eq!(dot([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]), 32.0);
+        assert_eq!(
+            cell([0.10, 0.2, 0.3], 10.0, 1),
+            cell([0.15, 0.25, 0.35], 10.0, 1)
+        );
+        assert_ne!(
+            cell([0.10, 0.2, 0.3], 10.0, 1),
+            cell([0.25, 0.2, 0.3], 10.0, 1)
+        );
+    }
+
+    /// Only the front half of the rings overdraws the planet.
+    #[test]
+    fn rings_split_into_front_and_back() {
+        let rings = Rings {
+            inner: 1.3,
+            outer: 2.0,
+            tilt: 0.0,
+            color: [200, 200, 200],
+        };
+        let count = |front| {
+            let mut fb = Fb::new();
+            draw_rings(&mut fb, 1, &rings, 160.0, 100.0, 40.0, front);
+            let lit = |x: i32, y: i32| fb.get(x, y) != [0; 3];
+            (
+                (0..crate::fb::W).filter(|&x| lit(x, 107)).count(),
+                (0..crate::fb::W).filter(|&x| lit(x, 93)).count(),
+            )
+        };
+        let (front_below, front_above) = count(true);
+        let (back_below, back_above) = count(false);
+        assert!(front_below > 0 && front_above == 0);
+        assert!(back_above > 0 && back_below == 0);
     }
 }

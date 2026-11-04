@@ -18,16 +18,21 @@ use game_toolkit::prelude::*;
 use app::{App, Controls};
 use fb::{H, W};
 
+/// The game-toolkit adapter: owns the GPU texture and forwards input to [`App`].
 struct Explorer {
+    /// Texture the framebuffer is uploaded to every frame.
     texture: TextureId,
+    /// Everything that is not GPU state.
     app: App,
 }
 
+/// Turns two key groups into -1, 0 or +1 using `f` (pressed or held); both cancel out.
 fn axis(input: &Input, plus: [Key; 2], minus: [Key; 2], f: fn(&Input, Key) -> bool) -> i32 {
     i32::from(plus.iter().any(|&k| f(input, k))) - i32::from(minus.iter().any(|&k| f(input, k)))
 }
 
 impl Game for Explorer {
+    /// Builds the app state and the texture its framebuffer is uploaded to.
     fn init(ctx: &mut Context) -> Result<Self> {
         let app = App::new();
         let texture =
@@ -36,6 +41,7 @@ impl Game for Explorer {
         Ok(Self { texture, app })
     }
 
+    /// Maps keys to [`Controls`] and advances the app; Esc quits.
     fn update(&mut self, ctx: &mut Context, dt: f32) {
         let input = &ctx.input;
         if input.key_pressed(Key::Escape) {
@@ -59,6 +65,7 @@ impl Game for Explorer {
         self.app.update(controls, dt);
     }
 
+    /// Draws the frame on the CPU, uploads it and scales it to the window by a whole number.
     fn render(&mut self, ctx: &mut Context, frame: &mut Frame) {
         self.app.draw();
         ctx.gfx
@@ -79,6 +86,7 @@ impl Game for Explorer {
     }
 }
 
+/// Opens a 960x600 window (3x scale) and runs the explorer.
 fn main() -> Result<()> {
     env_logger::init();
     run::<Explorer>(AppConfig {

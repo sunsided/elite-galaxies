@@ -9,45 +9,69 @@ use crate::scene;
 
 /// Seconds for a normal hop, a hop while zipping, and a galaxy jump.
 const TRAVEL: f32 = 0.55;
+/// Seconds per hop while zipping through systems (queued or held key).
 const ZIP: f32 = 0.2;
+/// Seconds for a full galaxy jump; the galaxy switches at the halfway flash.
 pub const HYPER: f32 = 1.6;
+/// Chart zoom progress per second (a full zoom takes 0.45 s).
 const CHART_SPEED: f32 = 1.0 / 0.45;
 
+/// Screen X of the planet centre in the system view.
 const PLANET_X: f32 = 160.0;
+/// Screen Y of the planet centre in the system view.
 const PLANET_Y: f32 = 64.0;
+/// The sun's centre X, centre Y and radius: a quarter disc in the top-left corner.
 const SUN: (f32, f32, f32) = (-8.0, -6.0, 30.0);
 /// Direction towards the sun from the planet (screen space, z out of the screen).
 const LIGHT: [f32; 3] = [-0.86, -0.38, 0.34];
 
+/// Top edge of the text panel at the bottom of the screen.
 const PANEL_Y: i32 = 128;
 
+/// What the explorer is currently animating.
 pub enum Motion {
+    /// Parked at the current system; the description is being typed or shown.
     Idle,
     /// Moving from one slot to another; `dir` is the side the new system comes from.
     Travel {
+        /// Slot the trip started from.
         from: usize,
+        /// Slot the trip ends at.
         to: usize,
+        /// +1 when moving right (new system enters from the right), -1 when moving left.
         dir: f32,
+        /// Seconds elapsed in this hop.
         t: f32,
+        /// Total duration of this hop in seconds.
         dur: f32,
     },
+    /// Jumping to another galaxy with streaking stars and a white flash.
     Hyper {
+        /// Seconds elapsed in this jump.
         t: f32,
+        /// Galaxy number (0-based) the jump ends in.
         to_galaxy: usize,
+        /// Whether the galaxy has already been swapped at the halfway point.
         switched: bool,
     },
 }
 
+/// One loaded galaxy with everything precomputed that drawing needs per frame.
 pub struct Galaxy {
+    /// Galaxy number, 0-based.
     pub number: usize,
+    /// All 256 systems, in the game's index order.
     pub systems: Vec<StarSystem>,
+    /// Planet look per system, indexed like `systems`.
     looks: Vec<Look>,
+    /// Description text per system, indexed like `systems`.
     descriptions: Vec<String>,
     /// System indices sorted left to right across the chart.
     pub order: Vec<usize>,
 }
 
 impl Galaxy {
+    /// Generates galaxy `number` (0-based) and precomputes looks, descriptions and chart order.
     pub fn load(number: usize) -> Self {
         let systems = elite::galaxy(number);
         let looks = systems.iter().map(Look::for_system).collect();
@@ -63,10 +87,12 @@ impl Galaxy {
         }
     }
 
+    /// Maps a chart-order slot to the system's index in `systems`.
     pub fn at(&self, slot: usize) -> usize {
         self.order[slot]
     }
 
+    /// The system at chart-order slot `slot`.
     pub fn system(&self, slot: usize) -> &StarSystem {
         &self.systems[self.at(slot)]
     }
@@ -92,37 +118,53 @@ pub struct Controls {
     pub held: i32,
     /// -1 / +1 when down / up was pressed this frame.
     pub galaxy: i32,
+    /// Tab or C was pressed: zoom to or from the galactic chart.
     pub toggle_chart: bool,
+    /// Space was pressed: stop or resume planet rotation.
     pub toggle_pause: bool,
 }
 
+/// The explorer: navigation state, animation clocks and the framebuffer it draws into.
 pub struct App {
+    /// The 320x200 frame the explorer draws into.
     pub fb: Fb,
+    /// Background stars for the parallax starfield.
     stars: Vec<scene::Star>,
+    /// The galaxy being explored.
     pub galaxy: Galaxy,
+    /// Chart-order slot of the current system (the departure slot while travelling).
     pub slot: usize,
+    /// The running animation, if any.
     pub motion: Motion,
     /// Extra hops requested while one is still running.
     queued: i32,
+    /// Wall-clock seconds since start; drives twinkling, flicker and the typewriter.
     t: f32,
+    /// Rotation clock for planets and moons; stands still while paused.
     spin_t: f32,
+    /// Whether planet rotation is paused.
     paused: bool,
     /// When the current system was reached; drives the typewriter text.
     arrived: f32,
+    /// Chart zoom progress: 0 shows the system, 1 the galactic chart.
     chart: f32,
+    /// The chart zoom progress `chart` is animating towards (0 or 1).
     chart_target: f32,
 }
 
+/// Smoothstep easing of `x`, clamped to `0..=1`.
 fn ease(x: f32) -> f32 {
     let x = x.clamp(0.0, 1.0);
     x * x * (3.0 - 2.0 * x)
 }
 
+/// Linear interpolation between two 2D points.
 fn lerp2(a: [f32; 2], b: [f32; 2], t: f32) -> [f32; 2] {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
 }
 
 impl App {
+    /// Starts in galaxy 1 at Lave, idle, with the chart closed.
     pub fn new() -> Self {
         let galaxy = Galaxy::load(0);
         // Start at Lave, of course.
@@ -171,11 +213,13 @@ impl App {
         self.advance(c.held, dt);
     }
 
+    /// Galactic chart coordinates of the system at `slot`.
     fn pos(&self, slot: usize) -> [f32; 2] {
         let s = self.galaxy.system(slot);
         [s.x as f32, s.y as f32]
     }
 
+    /// Requests a hop by `dir` slots: starts one now, or queues it behind a running hop.
     fn step(&mut self, dir: i32) {
         match self.motion {
             Motion::Idle => self.start_travel(dir, TRAVEL),
@@ -184,6 +228,7 @@ impl App {
         }
     }
 
+    /// Starts a hop of `dir` slots from the current slot, wrapping around the galaxy.
     fn start_travel(&mut self, dir: i32, dur: f32) {
         let n = self.galaxy.order.len() as i32;
         let to = (self.slot as i32 + dir).rem_euclid(n) as usize;
@@ -196,6 +241,7 @@ impl App {
         };
     }
 
+    /// Starts a jump to the next (`dir` = 1) or previous (-1) galaxy, unless already moving.
     fn start_hyper(&mut self, dir: i32) {
         if matches!(self.motion, Motion::Idle) {
             self.queued = 0;
@@ -208,6 +254,7 @@ impl App {
         }
     }
 
+    /// Advances the running animation by `dt` and chains the next hop while `held` or queued.
     fn advance(&mut self, held: i32, dt: f32) {
         match &mut self.motion {
             Motion::Idle => {}
@@ -358,6 +405,7 @@ impl App {
         }
     }
 
+    /// Draws the bottom text panel for `slot`; without `show_details` only the name line.
     fn draw_panel(&mut self, slot: usize, show_details: bool) {
         let idx = self.galaxy.at(slot);
         let s = &self.galaxy.systems[idx];
@@ -394,6 +442,7 @@ impl App {
         }
     }
 
+    /// Draws the top-right label: galaxy and system number, or the chart title.
     fn draw_header(&mut self, chart: bool) {
         let label = if chart {
             format!("GALACTIC CHART {}", self.galaxy.number + 1)
@@ -409,12 +458,15 @@ impl App {
     }
 }
 
+/// Tests for navigation, animation chaining and frame drawing.
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// One frame at 60 Hz.
     const FRAME: f32 = 1.0 / 60.0;
 
+    /// Applies `c` for one frame, then idles until `seconds` have passed.
     fn run(app: &mut App, c: Controls, seconds: f32) {
         app.update(c, FRAME);
         let mut t = FRAME;
@@ -424,6 +476,7 @@ mod tests {
         }
     }
 
+    /// Controls for one press of the right arrow.
     fn right() -> Controls {
         Controls {
             step: 1,
@@ -431,12 +484,14 @@ mod tests {
         }
     }
 
+    /// The explorer starts at Lave.
     #[test]
     fn starts_at_lave() {
         let app = App::new();
         assert_eq!(app.galaxy.system(app.slot).name, "Lave");
     }
 
+    /// Chart order runs left to right across the galaxy.
     #[test]
     fn order_runs_left_to_right() {
         let app = App::new();
@@ -444,6 +499,7 @@ mod tests {
         assert!(xs.windows(2).all(|w| w[0] <= w[1]));
     }
 
+    /// One press travels to the next slot and comes to rest.
     #[test]
     fn a_hop_arrives_at_the_next_slot() {
         let mut app = App::new();
@@ -453,6 +509,7 @@ mod tests {
         assert_eq!(app.slot, start + 1);
     }
 
+    /// Presses during a hop are queued and played out afterwards.
     #[test]
     fn presses_during_travel_are_queued() {
         let mut app = App::new();
@@ -464,6 +521,7 @@ mod tests {
         assert_eq!(app.slot, start + 3);
     }
 
+    /// Holding the key keeps hopping at zip speed.
     #[test]
     fn holding_zips_through_systems() {
         let mut app = App::new();
@@ -481,6 +539,7 @@ mod tests {
         assert!(app.slot >= start + 5, "only reached {}", app.slot - start);
     }
 
+    /// Going left from the first slot arrives at the last one.
     #[test]
     fn travel_wraps_around_the_galaxy() {
         let mut app = App::new();
@@ -496,6 +555,7 @@ mod tests {
         assert_eq!(app.slot, 255);
     }
 
+    /// A jump lands in the next galaxy near the same chart position, and wraps from 1 down to 8.
     #[test]
     fn hyperspace_lands_in_next_galaxy_near_same_spot() {
         let mut app = App::new();
@@ -528,6 +588,7 @@ mod tests {
         assert_eq!(app.galaxy.number, 7);
     }
 
+    /// Every animation phase draws without panicking.
     #[test]
     fn every_phase_draws_without_panicking() {
         let mut app = App::new();
@@ -559,6 +620,90 @@ mod tests {
             app.update(Controls::default(), FRAME);
             app.draw();
         }
+    }
+
+    /// Toggling the chart animates to it and back again.
+    #[test]
+    fn chart_toggle_animates_both_ways() {
+        let mut app = App::new();
+        let toggle = Controls {
+            toggle_chart: true,
+            ..Default::default()
+        };
+        run(&mut app, toggle, 0.1);
+        assert!(app.chart > 0.0 && app.chart < 1.0);
+        run(&mut app, Controls::default(), 1.0);
+        assert_eq!(app.chart, 1.0);
+        run(&mut app, toggle, 1.0);
+        assert_eq!(app.chart, 0.0);
+    }
+
+    /// Pausing freezes the rotation clock but not wall time.
+    #[test]
+    fn pause_freezes_rotation_only() {
+        let mut app = App::new();
+        let pause = Controls {
+            toggle_pause: true,
+            ..Default::default()
+        };
+        run(&mut app, pause, 1.0);
+        assert!(app.paused);
+        assert_eq!(app.spin_t, 0.0);
+        assert!(app.t > 0.9);
+    }
+
+    /// Left/right presses during a galaxy jump are ignored.
+    #[test]
+    fn hops_are_ignored_during_hyperspace() {
+        let mut app = App::new();
+        let start = app.slot;
+        app.update(
+            Controls {
+                galaxy: 1,
+                ..Default::default()
+            },
+            FRAME,
+        );
+        app.update(right(), FRAME);
+        assert_eq!(app.queued, 0);
+        assert!(matches!(app.motion, Motion::Hyper { .. }));
+        assert_eq!(app.slot, start);
+    }
+
+    /// The nearest slot to a system's own coordinates is that system.
+    #[test]
+    fn nearest_slot_finds_exact_match() {
+        let g = Galaxy::load(0);
+        for slot in [0, 17, 128, 255] {
+            let s = g.system(slot);
+            let found = g.system(g.nearest_slot(s.x as f32, s.y as f32));
+            assert_eq!((found.x, found.y), (s.x, s.y));
+        }
+    }
+
+    /// Easing is clamped smoothstep, and `lerp2` interpolates both axes.
+    #[test]
+    fn easing_helpers() {
+        assert_eq!(ease(-1.0), 0.0);
+        assert_eq!(ease(0.5), 0.5);
+        assert_eq!(ease(2.0), 1.0);
+        assert_eq!(lerp2([0.0, 10.0], [10.0, 30.0], 0.5), [5.0, 20.0]);
+    }
+
+    /// The description types itself out after arriving.
+    #[test]
+    fn description_types_out() {
+        let lit_rows = |app: &App| {
+            (PANEL_Y + 38..H)
+                .filter(|&y| (0..W).any(|x| app.fb.get(x, y) == [235, 235, 235]))
+                .count()
+        };
+        let mut app = App::new();
+        app.draw();
+        let early = lit_rows(&app);
+        run(&mut app, Controls::default(), 3.0);
+        app.draw();
+        assert!(lit_rows(&app) > early);
     }
 
     /// Writes PNG snapshots of several states to `$SNAPSHOT_DIR` for eyeballing.

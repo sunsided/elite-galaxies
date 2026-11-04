@@ -17,6 +17,7 @@ pub fn rand3(x: i32, y: i32, z: i32, seed: u32) -> f32 {
     hash3(x, y, z, seed) as f32 / u32::MAX as f32
 }
 
+/// Smoothstep fade curve `3t² - 2t³`, which hides the lattice in value noise.
 fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
@@ -50,10 +51,12 @@ pub fn fbm(p: [f32; 3], seed: u32, octaves: u32) -> f32 {
     ((sum / norm - 0.5) * 2.4 + 0.5).clamp(0.0, 1.0)
 }
 
+/// Tests for range, determinism and continuity of the noise.
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The same input gives the same value, always within `0..=1`.
     #[test]
     fn noise_is_deterministic_and_in_range() {
         for i in 0..500 {
@@ -65,6 +68,7 @@ mod tests {
         }
     }
 
+    /// Nearby points have nearby values.
     #[test]
     fn noise_is_continuous() {
         let a = value3([1.5, 2.25, 3.0], 1);
@@ -72,12 +76,14 @@ mod tests {
         assert!((a - b).abs() < 0.01);
     }
 
+    /// Different seeds give different noise.
     #[test]
     fn seeds_differ() {
         let p = [0.3, 0.6, 0.9];
         assert_ne!(value3(p, 1), value3(p, 2));
     }
 
+    /// The contrast stretch spreads fBm values into both tails.
     #[test]
     fn fbm_spreads_across_range() {
         let samples: Vec<f32> = (0..2000)
@@ -92,5 +98,30 @@ mod tests {
         let low = samples.iter().filter(|&&v| v < 0.3).count();
         let high = samples.iter().filter(|&&v| v > 0.7).count();
         assert!(low > 50 && high > 50, "low {low}, high {high}");
+    }
+
+    /// The lattice hash depends on every coordinate and the seed.
+    #[test]
+    fn hash_depends_on_all_inputs() {
+        let h = hash3(1, 2, 3, 4);
+        assert_eq!(h, hash3(1, 2, 3, 4));
+        assert_ne!(h, hash3(2, 2, 3, 4));
+        assert_ne!(h, hash3(1, 3, 3, 4));
+        assert_ne!(h, hash3(1, 2, 4, 4));
+        assert_ne!(h, hash3(1, 2, 3, 5));
+    }
+
+    /// Value noise equals the lattice value at integer points.
+    #[test]
+    fn value_noise_hits_lattice_points() {
+        assert_eq!(value3([3.0, -2.0, 5.0], 9), rand3(3, -2, 5, 9));
+    }
+
+    /// The fade curve is 0 at 0, 1 at 1 and symmetric around 0.5.
+    #[test]
+    fn smooth_is_a_symmetric_s_curve() {
+        assert_eq!(smooth(0.0), 0.0);
+        assert_eq!(smooth(1.0), 1.0);
+        assert!((smooth(0.25) + smooth(0.75) - 1.0).abs() < 1e-6);
     }
 }

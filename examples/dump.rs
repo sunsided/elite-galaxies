@@ -1,5 +1,6 @@
 //! Dumps every system of all eight galaxies as TSV (for diffing against txtelite).
 
+/// Prints one tab-separated line per system for all eight galaxies.
 fn main() {
     for g in 0..elite::GALAXIES {
         for s in elite::galaxy(g) {

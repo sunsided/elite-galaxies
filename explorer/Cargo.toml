@@ -17,3 +17,10 @@ env_logger = "0.11"
 
 [dev-dependencies]
 png = "0.18"
+
+# Every item, public or private, carries a doc comment.
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+missing_docs_in_private_items = "warn"

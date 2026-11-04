@@ -148,6 +148,7 @@ impl SoupRng {
     }
 }
 
+/// Generates the planet description of `system`, seeded from its seed bytes.
 pub(crate) fn describe(system: &StarSystem) -> String {
     let s = system.seed;
     let mut rng = SoupRng([s.s1_lo(), s.s1_hi(), s.s2_lo(), s.s2_hi()]);
@@ -156,6 +157,7 @@ pub(crate) fn describe(system: &StarSystem) -> String {
     out
 }
 
+/// Appends `source` to `out`, expanding every token code recursively.
 fn expand(source: &str, sys: &StarSystem, rng: &mut SoupRng, out: &mut String) {
     for ch in source.chars() {
         let code = ch as u32;
@@ -186,6 +188,7 @@ fn adjective(name: &str) -> String {
     format!("{stem}ian")
 }
 
+/// Appends a made-up word of one to four syllables in Sentence Case (token 0xB2).
 fn random_word(rng: &mut SoupRng, out: &mut String) {
     let len = rng.next() & 3;
     let mut printed_any = false;
@@ -207,6 +210,7 @@ fn random_word(rng: &mut SoupRng, out: &mut String) {
     }
 }
 
+/// Tests for the description grammar, its RNG and the word builders.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,10 +233,12 @@ mod tests {
         a as u8
     }
 
+    /// Galaxy 1's first system, Tibedied, as a fixture.
     fn some_system() -> StarSystem {
         StarSystem::from_seed(0, Seed::GALAXY_ONE)
     }
 
+    /// The RNG agrees with txtelite's `gen_rnd_number` for 1000 steps from several states.
     #[test]
     fn rng_matches_txtelite_reference() {
         let starts = [
@@ -254,6 +260,7 @@ mod tests {
         }
     }
 
+    /// "Lave" becomes "Lavian", other endings just gain "ian".
     #[test]
     fn adjective_drops_trailing_e_or_i() {
         assert_eq!(adjective("Lave"), "Lavian");
@@ -264,6 +271,7 @@ mod tests {
         assert_eq!(adjective("E"), "Eian");
     }
 
+    /// Text without token codes is copied verbatim and leaves the RNG untouched.
     #[test]
     fn plain_text_passes_through_without_using_rng() {
         let mut rng = SoupRng([1, 2, 3, 4]);
@@ -273,6 +281,7 @@ mod tests {
         assert_eq!(rng.0, [1, 2, 3, 4]);
     }
 
+    /// 0xB0 prints the planet name and 0xB1 its adjective.
     #[test]
     fn name_codes_expand_to_planet_name_and_adjective() {
         let sys = some_system();
@@ -281,6 +290,7 @@ mod tests {
         assert_eq!(out, format!("{0}/{0}ian", sys.name));
     }
 
+    /// RNG bytes pick options at the boundaries 0x33, 0x66, 0x99 and 0xCC.
     #[test]
     fn option_thresholds_split_the_byte_into_fifths() {
         // With a = b = c = 0 the first RNG output is exactly d.
@@ -309,6 +319,7 @@ mod tests {
         }
     }
 
+    /// Made-up words are letters only, at most eight, capitalized once.
     #[test]
     fn random_word_is_at_most_eight_letters_in_sentence_case() {
         for a in 0..=255u8 {
@@ -324,6 +335,7 @@ mod tests {
         }
     }
 
+    /// A code outside the grammar is a bug in the tables and panics.
     #[test]
     #[should_panic(expected = "bad code")]
     fn unknown_code_panics() {
@@ -335,6 +347,7 @@ mod tests {
         );
     }
 
+    /// All 2048 descriptions start with "T" or the planet's initial and end with a period.
     #[test]
     fn every_description_is_one_finished_sentence() {
         for g in 0..8 {
