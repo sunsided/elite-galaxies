@@ -2,6 +2,8 @@
 name = "elite"
 version = "0.1.0"
 edition = "2024"
+description = "The galaxy generator of Elite (1984) rebuilt in Rust, faithful to the 6502 original"
+keywords = ["elite", "procedural", "galaxy", "6502", "retro"]
 
 [dependencies]
 

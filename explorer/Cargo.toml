@@ -3,6 +3,7 @@ name = "elite-explorer"
 version = "0.1.0"
 edition = "2024"
 description = "A 320x200 pixel galaxy explorer for the Elite universe generator"
+keywords = ["elite", "galaxy", "explorer", "pixel-art", "retro"]
 publish = false
 
 [[bin]]
