@@ -4,7 +4,7 @@ The galaxy generator of *Elite* (1984, David Braben and Ian Bell) rebuilt in Rus
 
 ![Lave, as seen in the explorer](docs/screenshot.png)
 
-After watching a video on how Elite squeezed eight galaxies of 256 star systems each into a handful of bytes, I wanted to rebuild the generator as faithfully as possible. Where Ian Bell's C port and the original 6502 code disagree, this follows the 6502.
+After watching a video on how Elite squeezed eight galaxies of 256 star systems each into a handful of bytes, I wanted to rebuild the generator as faithfully as possible. Where Ian Bell's C port and the original 6502 code disagree, this follows the 6502. The visualization is made up, but with love.
 
 ## How it works
 
@@ -22,6 +22,10 @@ Also, the phrase table lists "ice bergs" and "dust clouds", yet the description 
 ## The explorer
 
 The explorer draws every frame on the CPU and shows it via [game-toolkit](https://github.com/sunsided/game-toolkit). A planet's look follows its description (rain forests, oceans, plantations, volcanoes, civil war, solar activity) and falls back to economy and tech level; since nothing mentions ice, some poor industrial worlds are frozen.
+
+The galactic hyperdrive, mid-jump:
+
+![Hyperspace streaks while jumping to the next galaxy](docs/hyperspace.png)
 
 | Key | Action |
 |---|---|
