@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+[workspace]
+members = ["explorer"]
+
+# The explorer shades every pixel on the CPU and wgpu is heavy in debug;
+# optimize dependencies and lightly optimize our own code even in dev builds.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
