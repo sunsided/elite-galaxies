@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Elite Galaxy Explorer</title>
+    <!-- trunk: build the explorer to wasm. Everything is drawn in code: no assets to copy. -->
+    <link data-trunk rel="rust" data-bin="explorer" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      /* The toolkit appends its canvas to <body>; fill the window, the explorer scales
+         its 320x200 frame by a whole number and centres it. */
+      canvas { display: block; width: 100vw !important; height: 100vh !important; outline: none; }
+    </style>
+  </head>
+  <body></body>
+</html>

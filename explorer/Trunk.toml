@@ -1,0 +1,10 @@
+[build]
+target = "index.html"
+dist = "../target/web"
+# Relative URLs so the build works from any sub-path (GitHub Pages, an embedding page).
+public_url = "./"
+# Stable file names (explorer.js / explorer_bg.wasm), so a host page can import them directly.
+filehash = false
+
+[serve]
+port = 8080

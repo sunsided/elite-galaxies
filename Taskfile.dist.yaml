@@ -17,6 +17,22 @@ tasks:
     cmds:
       - cargo run --release -p elite-explorer {{.CLI_ARGS}}
 
+  web:
+    desc: Run the explorer in the browser with live rebuild at http://localhost:8080 (needs trunk)
+    dir: explorer
+    preconditions: &web
+      - sh: command -v trunk
+        msg: "trunk not found - run: cargo install trunk --locked"
+    cmds:
+      - trunk serve --release {{.CLI_ARGS}}
+
+  web:build:
+    desc: Release build for the browser into target/web (what a release ships)
+    dir: explorer
+    preconditions: *web
+    cmds:
+      - trunk build --release --locked {{.CLI_ARGS}}
+
   cli:
     desc: 'Run the elite CLI, e.g. task cli -- show Lave'
     preconditions: *cargo
